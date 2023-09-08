@@ -1,0 +1,109 @@
+---
+title: "Project 1"
+author: "Vivi Feathers, Li-Chia Chang"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    theme: readable
+    df_print: tibble
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE,  warning = FALSE)
+```
+
+# Part 1 - Data Processing
+
+## First Step
+EDU01a data processing.
+
+Read in the EDU01a data as sheet1 using the code below.
+
+```{r edi01a_readin}
+library(readr)
+sheet1 <- read_csv("https://www4.stat.ncsu.edu/~online/datasets/EDU01a.csv")
+sheet1
+```
+
+### 1. Select columns 
+Select Area_name column and rename as area_name; select STCOU column and any column that ends in "D" and save it into `sheet1_select`.
+
+```{r edi01a_select}
+library(tidyverse)
+sheet1_select <- sheet1 %>%
+                   rename("area_name" = Area_name) %>% ## rename Area_name to area_name
+                   select(area_name, STCOU, ends_with("D")) ## select columns as required
+sheet1_select
+```
+
+### 2. Convert `sheet1_select` into long format 
+Convert `sheet1_select` into long format where each row has one enrollment value for `area_name`, save it into `sheet1_convert`.
+
+```{r edi01a_convert}
+sheet1_convert <- sheet1_select %>%
+## convert to long format and create 2 new columns
+                    pivot_longer(cols = 3:12, names_to = "survey_id", values_to = "enrollment")
+sheet1_convert
+```
+
+### 3. Create 2 new columns
+Split the survey_id column into 2 new columns, one has the last 2 digits to represent year in numeric format, one has the first 3 characters and 4 digits to represent measurement. Save the output into `sheet1_newcol`.
+
+```{r edi01a_newcol}
+sheet1_newcol <- sheet1_convert %>%
+## get the 8th and 9th sub string from survey_id, concatenate with "19" for year format, convert character to numeric, then get the first 7 sub string from survey_id, put them into new columns 
+                   mutate(year = as.numeric(paste0("19",substr(sheet1_convert$survey_id, 8, 9))), measuement = substr(sheet1_convert$survey_id, 1, 7)) 
+sheet1_newcol
+```
+
+### 4. Create two data sets.
+Subset `sheet1_newcol` into 2 data sets: one contains only non-county data, add a class to the tibble called state, save it in `sheet1_noncounty`; and one contains only county level data, add a class to the tibble called county, save it in `sheet1_county`.
+
+```{r edi01a_subset}
+sheet1_county <- sheet1_newcol %>%
+## find records that have area_name following the "County Name, DD" pattern
+                   subset(grepl(pattern = ", \\w\\w", sheet1_newcol$area_name))
+## add class called "county"
+                   class(sheet1_county) <- c("county", class(sheet1_county))
+sheet1_county
+
+## find records that do not have area_name value in sheet1_county area_name values 
+sheet1_noncounty <- sheet1_newcol[! sheet1_newcol$area_name %in% sheet1_county$area_name, ]
+## add class called "state"
+                   class(sheet1_noncounty) <- c("state", class(sheet1_noncounty))
+sheet1_noncounty
+```
+
+### 5. Create state variable for the county level tibble
+Use subset function to obtain the state name and output into a new column 
+```{r edi01a_state}
+sheet1_county <- sheet1_county %>%
+## store the state info into a new column by using sub function and get the sub string after "," from column area_name
+                   mutate(state = sub(".+, (.+)", "\\1", sheet1_county$area_name))
+sheet1_county
+```
+
+### 6. Create a division variable for the non-county level tibble
+
+```{r edi01a_division}
+## check the distinct value in area_name
+#unique(sheet1_noncounty$area_name)
+
+sheet1_noncounty <- sheet1_noncounty %>%
+                      mutate(division = if_else(area_name == "UNITED STATES", "ERROR",
+                                                if_else(area_name %in% c("CONNECTICUT", "MAINE", "MASSACHUSETTS", "NEW HAMPSHIRE", "RHODE ISLAND", "VERMONT"), "NEW ENGLAND",
+                                                        if_else(area_name %in% c("ILLINOIS", "INDIANA", "MICHIGAN", "OHIO", "WISCONSIN"), "EAST NORTH CENTRAL",
+                                                                if_else(area_name %in% c("IOWA", "KANSAS", "MINNESOTA", "MISSOURI", "NEBRASKA", "NORTH DAKOTA", "SOUTH DAKOTA"), "WEST NORTH CENTRAL",
+                                                                        if_else(area_name %in% c("NEW JERSEY", "NEW YORK", "PENNSYLVANIA"), "MIDDLE ATLANTIC", 
+                                                                                if_else(area_name %in% c("DELAWARE", "FLORIDA", "GEORGIA", "MARYLAND", "NORTH CAROLINA", "SOUTH CAROLINA", "VIRGINIA", "DISTRICT OF COLUMBIA", "District of Columbia", "WEST VIRGINIA"), "SOUTH ATLANTIC", 
+                                                                                        if_else(area_name %in% c("ALABAMA", "KENTUCKY", "MISSISSIPPI", "TENNESSEE"), "EAST SOUTH CENTRAL", 
+                                                                                                if_else(area_name %in% c("ARKANSAS", "LOUISIANA", "OKLAHOMA", "TEXAS"), "WEST SOUTH CENTRAL",
+                                                                                                        if_else(area_name %in% c("ARIZONA", "COLORADO", "IDAHO", "MONTANA", "NEVADA", "NEW MEXICO", "UTAH", "WYOMING"), "MOUNTAIN",
+                                                                                                                if_else(area_name %in% c("ALASKA", "CALIFORNIA", "HAWAII", "OREGON", "WASHINGTON"), "PACIFIC", "")))))))))))
+sheet1_noncounty
+
+```
+
