@@ -1,0 +1,354 @@
+---
+title: "Project 1"
+author: "Vivi Feathers, Li-Chia Chang"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    theme: readable
+    df_print: tibble
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE,  warning = FALSE)
+```
+
+# Part 1 - Data Processing
+
+## First Step
+EDU01a data processing.
+
+Read in the EDU01a data as sheet1 using the code below.
+
+```{r edi01a_readin}
+library(readr)
+sheet1 <- read_csv("https://www4.stat.ncsu.edu/~online/datasets/EDU01a.csv")
+sheet1
+```
+
+### 1. Select columns 
+Select Area_name column and rename as area_name; select STCOU column and any column that ends in "D" and save it into `sheet1_select`.
+
+```{r edi01a_select}
+library(tidyverse)
+sheet1_select <- sheet1 %>%
+                   rename("area_name" = Area_name) %>% ## rename Area_name to area_name
+                   select(area_name, STCOU, ends_with("D")) ## select columns as required
+sheet1_select
+```
+
+### 2. Convert `sheet1_select` into long format 
+Convert `sheet1_select` into long format where each row has one enrollment value for `area_name`, save it into `sheet1_convert`.
+
+```{r edi01a_convert}
+sheet1_convert <- sheet1_select %>%
+## convert to long format and create 2 new columns
+                    pivot_longer(cols = 3:12, names_to = "survey_id", values_to = "enrollment")
+sheet1_convert
+```
+
+### 3. Create 2 new columns
+Split the survey_id column into 2 new columns, one has the last 2 digits to represent year in numeric format, one has the first 3 characters and 4 digits to represent measurement. Save the output into `sheet1_newcol`.
+
+```{r edi01a_newcol}
+sheet1_newcol <- sheet1_convert %>%
+## get the 8th and 9th sub string from survey_id, concatenate with "19" for year format, convert character to numeric, then get the first 7 sub string from survey_id, put them into new columns 
+                   mutate(year = as.numeric(paste0(if_else(as.numeric(substr(sheet1_convert$survey_id, 8, 9)) > 10, "19", "20"), substr(sheet1_convert$survey_id, 8, 9))), measuement = substr(sheet1_convert$survey_id, 1, 7)) 
+sheet1_newcol
+```
+
+### 4. Create two data sets.
+Subset `sheet1_newcol` into 2 data sets: one contains only non-county data, add a class to the tibble called state, save it in `sheet1_noncounty`; and one contains only county level data, add a class to the tibble called county, save it in `sheet1_county`.
+
+```{r edi01a_subset}
+sheet1_county <- sheet1_newcol %>%
+## find records that have area_name following the "County Name, DD" pattern
+                   subset(grepl(pattern = ", \\w\\w", sheet1_newcol$area_name))
+## add class called "county"
+                   class(sheet1_county) <- c("county", class(sheet1_county))
+sheet1_county
+
+## find records that do not have area_name value in sheet1_county area_name values 
+sheet1_noncounty <- sheet1_newcol[! sheet1_newcol$area_name %in% sheet1_county$area_name, ]
+## add class called "state"
+                   class(sheet1_noncounty) <- c("state", class(sheet1_noncounty))
+sheet1_noncounty
+```
+
+### 5. Create state variable for the county level tibble
+Use subset function to obtain the state name and output into a new column 
+```{r edi01a_state}
+sheet1_county <- sheet1_county %>%
+## store the state info into a new column by using sub function and get the sub string after "," from column area_name
+                   mutate(state = sub(".+, (.+)", "\\1", sheet1_county$area_name))
+sheet1_county
+```
+
+### 6. Create a division variable for the non-county level tibble
+According to [WIKIPEDIA](https://en.wikipedia.org/wiki/List_of_regions_of_the_United_States), find the division name for each state using `if_else` function.
+```{r edi01a_division}
+## check the distinct value in area_name
+#unique(sheet1_noncounty$area_name)
+
+sheet1_noncounty <- sheet1_noncounty %>%
+                      mutate(division = if_else(area_name == "UNITED STATES", "ERROR",
+                                                if_else(area_name %in% c("CONNECTICUT", "MAINE", "MASSACHUSETTS", "NEW HAMPSHIRE", "RHODE ISLAND", "VERMONT"), "NEW ENGLAND",
+                                                        if_else(area_name %in% c("ILLINOIS", "INDIANA", "MICHIGAN", "OHIO", "WISCONSIN"), "EAST NORTH CENTRAL",
+                                                                if_else(area_name %in% c("IOWA", "KANSAS", "MINNESOTA", "MISSOURI", "NEBRASKA", "NORTH DAKOTA", "SOUTH DAKOTA"), "WEST NORTH CENTRAL",
+                                                                        if_else(area_name %in% c("NEW JERSEY", "NEW YORK", "PENNSYLVANIA"), "MIDDLE ATLANTIC", 
+                                                                                if_else(area_name %in% c("DELAWARE", "FLORIDA", "GEORGIA", "MARYLAND", "NORTH CAROLINA", "SOUTH CAROLINA", "VIRGINIA", "DISTRICT OF COLUMBIA", "District of Columbia", "WEST VIRGINIA"), "SOUTH ATLANTIC", 
+                                                                                        if_else(area_name %in% c("ALABAMA", "KENTUCKY", "MISSISSIPPI", "TENNESSEE"), "EAST SOUTH CENTRAL", 
+                                                                                                if_else(area_name %in% c("ARKANSAS", "LOUISIANA", "OKLAHOMA", "TEXAS"), "WEST SOUTH CENTRAL",
+                                                                                                        if_else(area_name %in% c("ARIZONA", "COLORADO", "IDAHO", "MONTANA", "NEVADA", "NEW MEXICO", "UTAH", "WYOMING"), "MOUNTAIN",
+                                                                                                                if_else(area_name %in% c("ALASKA", "CALIFORNIA", "HAWAII", "OREGON", "WASHINGTON"), "PACIFIC", "")))))))))))
+sheet1_noncounty
+```
+
+## Requirements
+Now we want to repeat the above process for the 2nd component of the data set. Instead of than copying and pasting from previous code, we want to write functions that do above steps then create a wrapped function to do everything in one function call.
+
+### 1. Write one function that does steps 1 & 2 above
+Combine step 1 and 2 into one function also give an optional argument with a default value that allows the user to specify the name of the column representing the value (enrollment for these data sets).
+```{r steponetwo}
+##`df1` is for data frame name and `col_name` is for defining the column name which stores the enrollment values`
+step_one_two <- function(df1, var_name) {
+                                   df1 %>%
+                                     rename("area_name" = Area_name) %>% ## rename Area_name to area_name
+                                     select(area_name, STCOU, ends_with("D")) %>% ## select columns as required
+                                     pivot_longer(cols = 3:12, names_to = "survey_id", values_to = var_name) ## convert to long format and create 2 new columns
+}
+#step_one_two (sheet1, "enroll")
+```
+
+### 2. Write one function that does steps 3 above
+Write one function that takes in the output from step 1 & 2, and creates a new tibble in step 3
+```{r stepthree}
+##`df2` is for data frame name
+step_three <- function(df2) {
+                                  df2 %>%
+## get the 8th and 9th sub string from survey_id, concatenate with "19" for year format, convert character to numeric, then get the first 7 sub string from survey_id, put them into new columns 
+                                    mutate(year = as.numeric(paste0(if_else(as.numeric(substr(df2$survey_id, 8, 9)) > 10, "19", "20"), substr(df2$survey_id, 8, 9))), measuement = substr(df2$survey_id, 1, 7)) 
+}
+#step_three (sheet1_convert)
+```
+
+### 3. Write one function that does steps 5 above
+Write one function that takes in the output from step 4 and creates a new tibble in step 5.
+```{r stepfive}
+##`df4` is for data frame name
+step_five <- function(df4) {
+              sheet1_county_final <<- df4 %>%
+## store the state info into a new column by using sub function and get the sub string after "," from column area_name
+                                   mutate(state = sub(".+, (.+)", "\\1", df4$area_name))
+              
+}
+#step_five (sheet1_county)
+```
+
+### 4. Write one function that does steps 6 above
+Write one function that takes in the output from step 4 and creates a new tibble in step 6.
+```{r stepsix}
+##`df5` is for data frame name
+step_six <- function(df5) {
+              sheet1_noncounty_final <<- df5 %>%
+                                     mutate(division = if_else(area_name == "UNITED STATES", "ERROR",
+                                                        if_else(area_name %in% c("CONNECTICUT", "MAINE", "MASSACHUSETTS", "NEW HAMPSHIRE", "RHODE ISLAND", "VERMONT"), "NEW ENGLAND",
+                                                         if_else(area_name %in% c("ILLINOIS", "INDIANA", "MICHIGAN", "OHIO", "WISCONSIN"), "EAST NORTH CENTRAL",
+                                                          if_else(area_name %in% c("IOWA", "KANSAS", "MINNESOTA", "MISSOURI", "NEBRASKA", "NORTH DAKOTA", "SOUTH DAKOTA"), "WEST NORTH CENTRAL",
+                                                           if_else(area_name %in% c("NEW JERSEY", "NEW YORK", "PENNSYLVANIA"), "MIDDLE ATLANTIC", 
+                                                            if_else(area_name %in% c("DELAWARE", "FLORIDA", "GEORGIA", "MARYLAND", "NORTH CAROLINA", "SOUTH CAROLINA", "VIRGINIA", "DISTRICT OF COLUMBIA", "District of Columbia", "WEST VIRGINIA"), "SOUTH ATLANTIC", 
+                                                             if_else(area_name %in% c("ALABAMA", "KENTUCKY", "MISSISSIPPI", "TENNESSEE"), "EAST SOUTH CENTRAL", 
+                                                              if_else(area_name %in% c("ARKANSAS", "LOUISIANA", "OKLAHOMA", "TEXAS"), "WEST SOUTH CENTRAL",
+                                                               if_else(area_name %in% c("ARIZONA", "COLORADO", "IDAHO", "MONTANA", "NEVADA", "NEW MEXICO", "UTAH", "WYOMING"), "MOUNTAIN",
+                                                                if_else(area_name %in% c("ALASKA", "CALIFORNIA", "HAWAII", "OREGON", "WASHINGTON"), "PACIFIC", "")))))))))))
+              #return (sheet1_noncounty_final)
+}
+#step_six (sheet1_noncounty)
+```
+
+### 5. Write one function that does steps 4 above
+Write one function that takes in the output from step 3 and creates the two tibbles in step 4, calls step_five and step_six functions then returns two final tibbles.
+```{r stepfour}
+##`df3` is for data frame name, save the output into `sheet1_county1` and "sheet1_noncounty1"
+step_four <- function(df3) {
+               sheet1_county1 <- df3 %>%
+## find records that have area_name following the "County Name, DD" pattern
+                                   subset(grepl(pattern = ", \\w\\w", df3$area_name))
+## add class called "county"
+                                   class(sheet1_county1) <- c("county", class(sheet1_county1))
+## call step_five function
+                                   step_five(sheet1_county1)
+
+## find records that do not have area_name value in sheet1_county area_name values 
+               sheet1_noncounty1 <- df3[! df3$area_name %in% sheet1_county1$area_name, ]
+## add class called "state"
+                                      class(sheet1_noncounty1) <- c("state", class(sheet1_noncounty1))
+## call step_six function
+                                      step_six(sheet1_noncounty1)
+            return (list(county = sheet1_county_final, non_county = sheet1_noncounty_final))
+}
+#step_four (sheet1_newcol)
+```
+### 6. Write one function that reads in the .csv file
+Create a function that takes in the URL of a .csv file
+```{r stepzero}
+##`url` is for the data source url
+step_zero <- function(url) {
+               read_csv(url)
+}
+```
+
+### 7. Create the final wrapped function
+Create a wrapper function calls all the functions written above, then returns the two tibbles.
+```{r wrap}
+##`url` is for the data source url, `var_name` is an optional argument for the variable name
+wrap_up <- function(url, var_name = "enroll") {
+           step0 <- step_zero(url)
+           step_1_2 <- step_one_two (step0, var_name)
+           step3 <- step_three (step_1_2)
+           step_four (step3)
+}
+## RUN IT!!!
+result <- wrap_up ("https://www4.stat.ncsu.edu/~online/datasets/EDU01b.csv")
+```
+
+
+## Call It and Combine Your Data
+Write a single short function that takes in the results of two calls to your wrapper function.
+```{r}
+combine_tibbles <- function(result1, result2){
+  ## Combine the tibbles and return two data sets as one object
+  return(list(county = bind_rows(result1$county, result2$county), non_county = bind_rows(result1$non_county, result2$non_county)))
+}
+```
+
+
+
+
+## Writing a Generic Function for Summarizing
+
+### First step
+For the state plotting method, write a function that plots the mean value of the statistic (enrollment for this data set) across the years for each Division.
+
+```{r}
+plot.state <- function(non_county, var_name = "enroll"){
+  ## On the x-axis we want the numeric year value, on the y-axis we want the mean of the statistic for each Division and numeric year.
+  new_df <- non_county %>%
+
+    ## remove observations at the ERROR setting of Division.
+    filter(division != "ERROR") %>%
+    
+    ## Compute mean for each year and division
+    group_by(year, division) %>%
+    summarise(mean_value = mean(get(var_name)))
+  
+
+  ggplot(new_df, aes(x = year, y = mean_value, color = division)) +
+  geom_line()
+}
+```
+
+
+For the class county, we’ll do a similar plotting function but with more flexibility. This function should allow the user to: - specify the state of interest, giving a default value if not specified - determine whether the ‘top’ or ‘bottom’ most counties should be looked at with a default for ‘top’ - instruct how many of the ‘top’ or ‘bottom’ will be investigated with a default value of 5
+
+```{r}
+plot.county <- function(county, state = "AL", var_name = "enroll", order = "top", number = 5){
+  new_df <- county %>%
+
+    ## filter the data to only include data from the state specified
+    filter(state == state) %>%
+    
+    
+    ## find the overall mean of the statistic (use get(var_name) here as well) for each Area_name and sort those values from largest to smallest
+    group_by(area_name) %>%
+    summarise(mean_value = mean(get(var_name)))
+    
+    
+  ## sort values above from largest to smallest if ‘top’ is specified or smallest to largest if ‘bottom’ is specified
+  if(order == "top") {
+    new_df <- new_df %>% arrange(desc(mean_value))
+  }
+  if(order == "bottom") {
+    new_df <- new_df %>% arrange(mean_value)
+  }
+    
+    
+    ## obtain number of Area_names from the previous step
+    names <- head(new_df, number)$area_name
+    
+    
+    ## filter the data for this state to only include the Area_name
+    county <- county %>% filter(area_name == names)
+  
+    
+  ## create a line plot
+  ggplot(county, aes(x = year, y = get(var_name), color = area_name)) +
+    geom_line()
+}
+```
+
+
+## Put it Together
+```{r}
+
+## Run data processing function on the two enrollment URLs
+resulta <- wrap_up("https://www4.stat.ncsu.edu/~online/datasets/EDU01a.csv")
+resultb <- wrap_up("https://www4.stat.ncsu.edu/~online/datasets/EDU01b.csv")
+
+
+## Combine these dataframes into one object
+result <- combine_tibbles(resulta, resultb)
+
+## Plot state dataframe
+plot(result$non_county)
+
+
+## Plot county dataframe
+## Specifying the state to be “NC”, the group being the top, the number looked at being 10
+plot(result$county, state = "NC", order = "top", number = 10)
+
+## Specifying the state to be “AZ”, the group being the bottom, the number looked at being 6
+plot(result$county, state = "AZ", order = "bottom", number = 6)
+
+## Without specifying anything (defaults used)
+plot(result$county)
+
+## Specifying the state to be “OH”, the group being the top, the number looked at being 8
+plot(result$county, state = "OH", order = "top", number = 8)
+```
+Read in another couple similar data sets and apply functions
+```{r}
+## Run data processing function on the enrollment URLs
+resulta <- wrap_up("https://www4.stat.ncsu.edu/~online/datasets/PST01a.csv")
+resultb <- wrap_up("https://www4.stat.ncsu.edu/~online/datasets/PST01b.csv")
+resultc <- wrap_up("https://www4.stat.ncsu.edu/~online/datasets/PST01c.csv")
+resultd <- wrap_up("https://www4.stat.ncsu.edu/~online/datasets/PST01d.csv")
+
+
+## Combine these dataframes into one object
+result <- combine_tibbles(combine_tibbles(combine_tibbles(resulta, resultb), resultc), resultd)
+
+
+## Plot state dataframe
+plot(result$non_county)
+
+
+## Plot county dataframe
+## Specifying the state to be “PA”, the group being the top, the number looked at being 5
+plot(result$county, state = "PA", order = "top", number = 5)
+
+## Specifying the state to be “TX”, the group being the bottom, the number looked at being 12
+plot(result$county, state = "TX", order = "bottom", number = 12)
+
+## Without specifying anything (defaults used)
+plot(result$county)
+
+## Specifying the state to be “NY”, the group being the top, the number looked at being 6
+plot(result$county, state = "NY", order = "top", number = 6)
+```
+
+
+
+
