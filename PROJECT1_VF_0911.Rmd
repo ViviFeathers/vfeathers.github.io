@@ -341,21 +341,21 @@ resultb <- wrap_up("https://www4.stat.ncsu.edu/~online/datasets/EDU01b.csv")
 result <- combine_tibbles(resulta, resultb)
 
 ## Plot state data frame
-plot.state(result$non_county)
+plot(result$non_county)
 
 
 ## Plot county data frame
 ## Specifying the state to be “NC”, the group being the top, the number looked at being 10
-plot.county(result$county, pickstate = "NC", order = "top", number = 10)
+plot(result$county, pickstate = "NC", order = "top", number = 10)
 
 ## Specifying the state to be “AZ”, the group being the bottom, the number looked at being 6
-plot.county(result$county, pickstate = "AZ", order = "bottom", number = 6)
+plot(result$county, pickstate = "AZ", order = "bottom", number = 6)
 
 ## Without specifying anything (defaults used)
-plot.county(result$county)
+plot(result$county)
 
 ## Specifying the state to be “OH”, the group being the top, the number looked at being 8
-plot.county(result$county, pickstate = "OH", order = "top", number = 8)
+plot(result$county, pickstate = "OH", order = "top", number = 8)
 ```
 
 ## Second section
@@ -390,19 +390,19 @@ result <- combine_tibbles(combine_tibbles(combine_tibbles(resulta, resultb), res
 
 
 ## Plot state data frame
-plot.state(result$non_county)
+plot(result$non_county)
 
 
 ## Plot county data frame
 ## Specifying the state to be “PA”, the group being the top, the number looked at being 5
-plot.county(result$county, pickstate = "PA", order = "top", number = 5)
+plot(result$county, pickstate = "PA", order = "top", number = 5)
 
 ## Specifying the state to be “TX”, the group being the bottom, the number looked at being 12
-plot.county(result$county, pickstate = "TX", order = "bottom", number = 12)
+plot(result$county, pickstate = "TX", order = "bottom", number = 12)
 
 ## Without specifying anything (defaults used)
-plot.county(result$county)
+plot(result$county)
 
 ## Specifying the state to be “NY”, the group being the top, the number looked at being 6
-plot.county(result$county, pickstate = "NY", order = "top", number = 6)
+plot(result$county, pickstate = "NY", order = "top", number = 6)
 ```
